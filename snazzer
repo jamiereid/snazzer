@@ -4,6 +4,40 @@ SNAZZER_VERSION=0.2
 SNAZZER_MEAS_LOCK_DIR="/var/lock/snazzer-measure.lock"
 SNAZZER_SNAPSHOTZ_PERMS=0700
 
+DO_ACTION="snapshot"
+DO_FORCE=0
+DRY_RUN=0
+DO_ALL=0
+
+while [ "$(echo "$1" | grep -c "^-" || true)" != 0 ]
+do
+    case "$1" in
+        -h | --help ) pod2usage -exit 0 "$0"; exit ;;
+             --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
+             --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
+             --man-markdown )
+             cat <<HERE | perl -Mstrict
+if ( eval { require Pod::Markdown; 1; } ) {
+    Pod::Markdown->new->filter('$0');
+}
+else {
+    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
+    exit 9;
+}
+HERE
+                 exit ;;
+        -p | --prune ) DO_ACTION="prune"; ;;
+        -m | --measure ) DO_ACTION="measure"; ;;
+             --list-subvolumes ) DO_ACTION="list-subvolumes"; ;;
+             --list-snapshots ) DO_ACTION="list-snapshots"; ;;
+        -f | --force ) DO_FORCE=1; ;;
+        -d | --dry-run ) DRY_RUN=1; ;;
+        -a | --all ) DO_ALL=1; ;;
+        * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
+    esac
+    shift
+done
+
 # For testing
 if [ -n "$SNAZZER_DATE" ]; then
     SNAZZER_DATE=$SNAZZER_DATE
@@ -477,40 +511,6 @@ do_multiple() {
     done
     sync
 }
-
-DO_ACTION="snapshot"
-DO_FORCE=0
-DRY_RUN=0
-DO_ALL=0
-
-while [ "$(echo "$1" | grep -c "^-" || true)" != 0 ]
-do
-    case "$1" in
-        -h | --help ) pod2usage -exit 0 "$0"; exit ;;
-             --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
-             --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
-             --man-markdown )
-             cat <<HERE | perl -Mstrict
-if ( eval { require Pod::Markdown; 1; } ) {
-    Pod::Markdown->new->filter('$0');
-}
-else {
-    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
-    exit 9;
-}
-HERE
-                 exit ;;
-        -p | --prune ) DO_ACTION="prune"; ;;
-        -m | --measure ) DO_ACTION="measure"; ;;
-             --list-subvolumes ) DO_ACTION="list-subvolumes"; ;;
-             --list-snapshots ) DO_ACTION="list-snapshots"; ;;
-        -f | --force ) DO_FORCE=1; ;;
-        -d | --dry-run ) DRY_RUN=1; ;;
-        -a | --all ) DO_ALL=1; ;;
-        * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
-    esac
-    shift
-done
 
 do_mountpoint() {
     MOUNTPOINT=$1
