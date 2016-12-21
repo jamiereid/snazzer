@@ -4,40 +4,6 @@ SNAZZER_VERSION=0.2
 SNAZZER_MEAS_LOCK_DIR="/var/lock/snazzer-measure.lock"
 SNAZZER_SNAPSHOTZ_PERMS=0700
 
-DO_ACTION="snapshot"
-DO_FORCE=0
-DRY_RUN=0
-DO_ALL=0
-
-while [ "$(echo "$1" | grep -c "^-" || true)" != 0 ]
-do
-    case "$1" in
-        -h | --help ) pod2usage -exit 0 "$0"; exit ;;
-             --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
-             --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
-             --man-markdown )
-             cat <<HERE | perl -Mstrict
-if ( eval { require Pod::Markdown; 1; } ) {
-    Pod::Markdown->new->filter('$0');
-}
-else {
-    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
-    exit 9;
-}
-HERE
-                 exit ;;
-        -p | --prune ) DO_ACTION="prune"; ;;
-        -m | --measure ) DO_ACTION="measure"; ;;
-             --list-subvolumes ) DO_ACTION="list-subvolumes"; ;;
-             --list-snapshots ) DO_ACTION="list-snapshots"; ;;
-        -f | --force ) DO_FORCE=1; ;;
-        -d | --dry-run ) DRY_RUN=1; ;;
-        -a | --all ) DO_ALL=1; ;;
-        * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
-    esac
-    shift
-done
-
 # For testing
 if [ -n "$SNAZZER_DATE" ]; then
     SNAZZER_DATE=$SNAZZER_DATE
@@ -54,15 +20,17 @@ fi
 if [ -z "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" ]; then
     SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
 fi
-# Keep in sync with the POD!
-if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
-    SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
-fi
 
-if ! $SUDO test -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE"; then
-    MISSING_SUBVOLS_EXCL_FILE="$SNAZZER_SUBVOLS_EXCLUDE_FILE"
-    SNAZZER_SUBVOLS_EXCLUDE_FILE=$(mktemp)
-    cat <<HERE > "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
+init_subvols_exclude_file() {
+    # Keep in sync with the POD!
+    if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
+        SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
+    fi
+
+    if ! test -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE"; then
+        MISSING_SUBVOLS_EXCL_FILE="$SNAZZER_SUBVOLS_EXCLUDE_FILE"
+        SNAZZER_SUBVOLS_EXCLUDE_FILE=$(mktemp)
+        cat <<HERE > "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
 var/cache
 var/lib/docker/*
 .snapshots
@@ -70,13 +38,14 @@ tmp
 *backup*
 *secret*
 HERE
-    if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
-    cat <<HERE >&2
+        if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
+        cat <<HERE >&2
 WARN: $MISSING_SUBVOLS_EXCL_FILE missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
 HERE
-    printf "    " >&2
-    sed ':a;N;$!ba;s/\n/, /g' "$SNAZZER_SUBVOLS_EXCLUDE_FILE" >&2
-fi
+        printf "    " >&2
+        sed ':a;N;$!ba;s/\n/, /g' "$SNAZZER_SUBVOLS_EXCLUDE_FILE" >&2
+    fi
+}
 
 # So, mountpoint(1) returns true if the path is a btrfs subvolume root, but we
 # want to know if the path is a btrfs *filesystem* root. Hence the df/grep crazy
@@ -512,6 +481,40 @@ do_multiple() {
     sync
 }
 
+DO_ACTION="snapshot"
+DO_FORCE=0
+DRY_RUN=0
+DO_ALL=0
+
+while [ "$(echo "$1" | grep -c "^-" || true)" != 0 ]
+do
+    case "$1" in
+        -h | --help ) pod2usage -exit 0 "$0"; exit ;;
+             --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
+             --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
+             --man-markdown )
+             cat <<HERE | perl -Mstrict
+if ( eval { require Pod::Markdown; 1; } ) {
+    Pod::Markdown->new->filter('$0');
+}
+else {
+    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
+    exit 9;
+}
+HERE
+                 exit ;;
+        -p | --prune ) DO_ACTION="prune"; ;;
+        -m | --measure ) DO_ACTION="measure"; ;;
+             --list-subvolumes ) DO_ACTION="list-subvolumes"; ;;
+             --list-snapshots ) DO_ACTION="list-snapshots"; ;;
+        -f | --force ) DO_FORCE=1; ;;
+        -d | --dry-run ) DRY_RUN=1; ;;
+        -a | --all ) DO_ALL=1; ;;
+        * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
+    esac
+    shift
+done
+
 do_mountpoint() {
     MOUNTPOINT=$1
     TMP_EXCL=$2
@@ -568,6 +571,7 @@ elif [ "$DO_FORCE" = "1" ] && [ "$DRY_RUN" = "1" ]; then
     exit 1
 elif [ "$DO_ALL" = "1" ]; then
     assert_btrfs_tools
+    init_subvols_exclude_file
     if [ -z "$1" ]; then
         do_mountpoints
     elif [ -n "$1" ] && [ -z "$2" ]; then
@@ -579,6 +583,7 @@ elif [ "$DO_ALL" = "1" ]; then
     fi
 else
     assert_btrfs_tools
+    init_subvols_exclude_file
     do_multiple "$DO_ACTION" "$@"
 fi
 if [ -n "$MISSING_SUBVOLS_EXCL_FILE" ]; then
